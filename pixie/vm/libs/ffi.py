@@ -8,7 +8,7 @@ from pixie.vm.code import as_var, affirm, extend, wrap_fn
 import pixie.vm.rt as rt
 from rpython.rtyper.lltypesystem import rffi, lltype, llmemory
 from pixie.vm.primitives import nil, true, false
-from pixie.vm.numbers import Integer, Float
+from pixie.vm.numbers import to_float, Integer, Float, BigInteger, Ratio
 from pixie.vm.string import String
 from pixie.vm.keyword import Keyword
 from pixie.vm.util import unicode_to_utf8
@@ -40,9 +40,6 @@ class CType(object.Type):
 
 class ExternalLib(object.Object):
     _type = object.Type(u"pixie.stdlib.ExternalLib")
-
-    def type(self):
-        return ExternalLib._type
 
     def __init__(self, nm):
         assert isinstance(nm, unicode)
@@ -93,9 +90,6 @@ class ExternalLib(object.Object):
 class FFIFn(object.Object):
     _type = object.Type(u"pixie.stdlib.FFIFn")
     _immutable_fields_ = ["_name", "_f_ptr", "_c_fn_type"]
-
-    def type(self):
-        return FFIFn._type
 
     def __init__(self, name, fn_ptr, c_fn_type):
         assert isinstance(c_fn_type, CFunctionType)
@@ -218,9 +212,6 @@ class Buffer(PointerType):
     """ Defines a byte buffer with non-gc'd (therefore non-movable) contents
     """
     _type = object.Type(u"pixie.stdlib.Buffer")
-
-    def type(self):
-        return Buffer._type
 
     def __init__(self, size):
         self._size = size
@@ -350,6 +341,26 @@ class CInt(CType):
         return clibffi.cast_type_to_ffitype(rffi.INT)
 CInt()
 
+class CFloat(CType):
+    def __init__(self):
+        CType.__init__(self, u"pixie.stdlib.CFloat")
+
+    def ffi_get_value(self, ptr):
+        casted = rffi.cast(rffi.FLOATP, ptr)
+        return Float(rffi.cast(rffi.DOUBLE, casted[0]))
+
+    def ffi_set_value(self, ptr, val):
+        val = to_float(val)
+        casted = rffi.cast(rffi.FLOATP, ptr)
+        casted[0] = rffi.cast(rffi.FLOAT, val.float_val())
+
+    def ffi_size(self):
+        return rffi.sizeof(rffi.FLOAT)
+
+    def ffi_type(self):
+        return clibffi.cast_type_to_ffitype(rffi.FLOAT)
+CFloat()
+
 class CDouble(CType):
     def __init__(self):
         CType.__init__(self, u"pixie.stdlib.CDouble")
@@ -359,6 +370,7 @@ class CDouble(CType):
         return Float(casted[0])
 
     def ffi_set_value(self, ptr, val):
+        val = to_float(val)
         casted = rffi.cast(rffi.DOUBLEP, ptr)
         casted[0] = rffi.cast(rffi.DOUBLE, val.float_val())
 
@@ -481,8 +493,6 @@ cvoidp = CVoidP()
 
 class VoidP(PointerType):
     _type = cvoidp
-    def type(self):
-        return VoidP._type
 
     def __init__(self, raw_data):
         self._raw_data = raw_data
@@ -582,9 +592,6 @@ class CCallback(PointerType):
         self._raw_closure = raw_closure
         self._is_invoked = False
         self._unique_id = id
-
-    def type(self):
-        return CCallback._type
 
     def get_raw_closure(self):
         return self._raw_closure

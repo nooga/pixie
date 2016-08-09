@@ -2,7 +2,7 @@ all: help
 
 EXTERNALS=externals
 
-PYTHON ?= python
+PYTHON ?= `env which -a python2 python2.7 | head -n1`
 PYTHONPATH=$$PYTHONPATH:$(EXTERNALS)/pypy
 
 
@@ -38,27 +38,22 @@ compile_basics:
 	@echo -e "\n\n\n\nWARNING: Compiling core libs. If you want to modify one of these files delete the .pxic files first\n\n\n\n"
 	./pixie-vm -c pixie/uv.pxi -c pixie/io.pxi -c pixie/stacklets.pxi -c pixie/stdlib.pxi -c pixie/repl.pxi
 
-build_preload_with_jit: fetch_externals
-	$(PYTHON) $(EXTERNALS)/pypy/rpython/bin/rpython $(COMMON_BUILD_OPTS) --opt=jit target_preload.py 2>&1 >/dev/null | grep -v 'WARNING'
-
-build_preload_no_jit: fetch_externals
-	$(PYTHON) $(EXTERNALS)/pypy/rpython/bin/rpython $(COMMON_BUILD_OPTS) target_preload.py
-
 build: fetch_externals
 	$(PYTHON) $(EXTERNALS)/pypy/rpython/bin/rpython $(COMMON_BUILD_OPTS) $(JIT_OPTS) $(TARGET_OPTS)
 
-fetch_externals: $(EXTERNALS)/pypy ./lib
+fetch_externals: $(EXTERNALS)/pypy externals.fetched
 
-lib:
+externals.fetched:
 	echo https://github.com/pixie-lang/external-deps/releases/download/1.0/`uname -s`-`uname -m`.tar.bz2
 	curl -L https://github.com/pixie-lang/external-deps/releases/download/1.0/`uname -s`-`uname -m`.tar.bz2 > /tmp/externals.tar.bz2
 	tar -jxf /tmp/externals.tar.bz2 --strip-components=2
+	touch externals.fetched
 
 
 $(EXTERNALS)/pypy:
 	mkdir $(EXTERNALS); \
 	cd $(EXTERNALS); \
-	curl https://bitbucket.org/pypy/pypy/get/default.tar.bz2 >  pypy.tar.bz2; \
+	curl https://bitbucket.org/pypy/pypy/get/81254.tar.bz2 >  pypy.tar.bz2; \
 	mkdir pypy; \
 	cd pypy; \
 	tar -jxf ../pypy.tar.bz2 --strip-components=1
@@ -87,11 +82,11 @@ compile_src:
 	find * -name "*.pxi" | grep "^pixie/" | xargs -L1 ./pixie-vm $(EXTERNALS_FLAGS) -c
 
 clean_pxic:
-	find * -name "*.pxic" | xargs rm
+	find * -name "*.pxic" | xargs --no-run-if-empty rm
 
 clean: clean_pxic
 	rm -rf ./lib
 	rm -rf ./include
-	rm -rf ./externals
+	rm -rf ./externals*
 	rm -f ./pixie-vm
 	rm -f ./*.pyc

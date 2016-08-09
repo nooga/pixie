@@ -13,9 +13,6 @@ import math
 class Number(object.Object):
     _type = object.Type(u"pixie.stdlib.Number")
 
-    def type(self):
-        return Number._type
-
 class Integer(Number):
     _type = object.Type(u"pixie.stdlib.Integer", Number._type)
     _immutable_fields_ = ["_int_val"]
@@ -32,9 +29,6 @@ class Integer(Number):
     def promote(self):
         return Integer(jit.promote(self._int_val))
 
-    def type(self):
-        return Integer._type
-
 zero_int = Integer(0)
 one_int = Integer(1)
 
@@ -48,9 +42,6 @@ class BigInteger(Number):
     def bigint_val(self):
         return self._bigint_val
 
-    def type(self):
-        return BigInteger._type
-
 class Float(Number):
     _type = object.Type(u"pixie.stdlib.Float", Number._type)
     _immutable_fields_ = ["_float_val"]
@@ -60,9 +51,6 @@ class Float(Number):
 
     def float_val(self):
         return self._float_val
-
-    def type(self):
-        return Float._type
 
 class Ratio(Number):
     _type = object.Type(u"pixie.stdlib.Ratio", Number._type)
@@ -78,9 +66,6 @@ class Ratio(Number):
 
     def denominator(self):
         return self._denominator
-
-    def type(self):
-        return Ratio._type
 
 @wrap_fn
 def ratio_write(obj):
@@ -107,8 +92,12 @@ _gte = as_var("-gte")(DoublePolymorphicFn(u"-gte", IMath))
 _num_eq = as_var("-num-eq")(DoublePolymorphicFn(u"-num-eq", IMath))
 _num_eq.set_default_fn(wrap_fn(lambda a, b: false))
 
-as_var("MAX-NUMBER")(Integer(100000)) # TODO: set this to a real max number
+IUncheckedMath = as_var("IUncheckedMath")(Protocol(u"IUncheckedMath"))
+_unchecked_add = as_var("-unchecked-add")(DoublePolymorphicFn(u"-unchecked-add", IUncheckedMath))
+_unchecked_subtract = as_var("-unchecked-subtract")(DoublePolymorphicFn(u"-unchecked-subtract", IUncheckedMath))
+_unchecked_multiply = as_var("-unchecked-multiply")(DoublePolymorphicFn(u"-unchecked-multiply", IUncheckedMath))
 
+as_var("MAX-NUMBER")(Integer(100000)) # TODO: set this to a real max number
 
 num_op_template = """@extend({pfn}, {ty1}._type, {ty2}._type)
 def {pfn}_{ty1}_{ty2}(a, b):
@@ -167,6 +156,16 @@ def define_num_ops():
 
 define_num_ops()
 
+def define_unchecked_num_ops():
+    # maybe define get_val() instead of using tuples?
+    num_classes = [(Integer, "int_val"), (Float, "float_val")]
+    for (c1, conv1) in num_classes:
+        for (c2, conv2) in num_classes:
+            for (op, sym) in [("_unchecked_add", "+"), ("_unchecked_subtract", "-"), ("_unchecked_multiply", "*")]:
+                extend_num_op(op, c1, c2, conv1, sym, conv2)
+
+define_unchecked_num_ops()
+                
 bigint_ops_tmpl = """@extend({pfn}, {ty1}._type, {ty2}._type)
 def _{pfn}_{ty1}_{ty2}(a, b):
     assert isinstance(a, {ty1}) and isinstance(b, {ty2})
@@ -302,9 +301,11 @@ def to_float(x):
         return x
     if isinstance(x, Ratio):
         return rt.wrap(x.numerator() / float(x.denominator()))
+    if isinstance(x, Integer):
+        return rt.wrap(float(x.int_val()))
     if isinstance(x, BigInteger):
         return rt.wrap(x.bigint_val().tofloat())
-    assert False
+    object.runtime_error(u"Cannot convert %s to float" %x.type().name())
 
 def to_float_conv(c):
     if c == Float:

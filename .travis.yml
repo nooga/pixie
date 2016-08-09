@@ -1,14 +1,10 @@
+sudo: false
 env:
   - JIT_OPTS='--opt=jit' TARGET_OPTS='target.py'
   - JIT_OPTS='' TARGET_OPTS='target.py'
-  #- JIT_OPTS='--opt=jit' TARGET_OPTS='target_preload.py'
-  #- JIT_OPTS='' TARGET_OPTS='target_preload.py'
 
 matrix:
   fast_finish: true 
-  allow_failures:
-    - env: JIT_OPTS='--opt=jit' TARGET_OPTS='target_preload.py'
-    - env: JIT_OPTS='' TARGET_OPTS='target_preload.py'
 
 script:
   - make PYTHON=python build
@@ -16,8 +12,14 @@ script:
   - make compile_tests
   - make run_built_tests
 
-before_install:
-        - sudo apt-get install libffi-dev libedit-dev libboost-all-dev zlib1g-dev zlib-bin
+addons:
+  apt:
+    packages:
+      - libffi-dev
+      - libedit-dev
+      - libboost-all-dev
+      - zlib1g-dev
+      - zlib-bin
 
 notifications:
   irc: "chat.freenode.net#pixie-lang"

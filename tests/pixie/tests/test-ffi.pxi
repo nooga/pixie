@@ -1,6 +1,7 @@
 (ns pixie.tests.test-ffi
   (require pixie.test :as t)
-  (require pixie.math :as m))
+  (require pixie.math :as m)
+  (require pixie.ffi-infer :as i))
 
 
 
@@ -36,6 +37,21 @@
 (t/deftest test-ffi-infer
   (t/assert= 0.5 (m/asin (m/sin 0.5))))
 
+(t/deftest test-cdouble
+  (i/with-config {:library "m"
+                  :cxx-flags ["-lm"]
+                  :includes ["math.h"]}
+    (i/defcfn sinf)
+    (i/defcfn asinf)
+    (i/defcfn cosf)
+    (i/defcfn powf))
+  (t/assert= 0.5 (asinf (sinf 0.5)))
+  (t/assert= 1.0 (+ (powf (sinf 0.5) 2.0) (powf (cosf 0.5) 2.0))))
+
+(t/deftest test-invalid-float-argument
+  (t/assert-throws? (m/sin "nil"))
+  (t/assert-throws? (m/sin nil))
+  )
 
 (t/deftest test-ffi-callbacks
   (let [MAX 255
@@ -58,3 +74,10 @@
 
 (t/deftest test-size
   (t/assert= (pixie.ffi/struct-size (pixie.ffi/c-struct "struct" 1234 [])) 1234))
+
+
+(t/deftest test-double-coercion
+  (t/assert= (m/sin 1) (m/sin 1.0))
+  (let [big (reduce * 1 (range 1 100))]
+    (t/assert= (m/sin big) (m/sin (float big))))
+  (t/assert= (m/sin (/ 1 2)) (m/sin (float (/ 1 2)))))

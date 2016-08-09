@@ -12,8 +12,13 @@
 (t/deftest test-satisfies
   (foreach [t [t1 t2 t3 t4 t5]]
            (t/assert= t t)
+           (t/assert (satisfies? IRecord t))
            (t/assert (satisfies? IAssociative t))
-           (t/assert (satisfies? ILookup t))))
+           (t/assert (satisfies? ILookup t))
+           (t/assert (satisfies? IPersistentCollection t))))
+
+(t/deftest test-record-pred
+  (t/assert (record? t1)))
 
 (t/deftest test-eq
   (t/assert= t1 t2)
@@ -49,3 +54,25 @@
            (t/assert (contains? t :one))
            (t/assert (contains? t :two))
            (t/assert (contains? t :three))))
+
+(t/deftest test-ipersistentcoll
+  (t/assert= 11 (-> t1 (conj [:one 11]) :one))
+  (t/assert= 11 (-> t1 (conj (map-entry :one 11)) :one)))
+
+(t/deftest test-record-metadata
+  (t/assert= nil (meta t1))
+  (t/assert= :foo (-> t1 (with-meta :foo) meta)))
+
+
+(t/deftest ireduce []
+  (t/assert= [[:one 1] [:two 2] [:three 3]] (reduce conj [] t1))
+  (t/assert= [1 2 3] (vals t1))
+  (t/assert= [:one :two :three] (keys t1)))
+
+(t/deftest icounted []
+  (t/assert= (count t1) 3))
+
+(t/deftest seqable []
+  (t/assert= (key (first (seq t1))) :one)
+  (t/assert= (val (first (seq t1))) 1)
+  (t/assert (instance? LazySeq (seq t1))))

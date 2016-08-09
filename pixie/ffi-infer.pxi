@@ -104,11 +104,14 @@ return 0;
    (= (:type of-type) :function) (callback-type of-type in-struct?)
    :else 'pixie.stdlib/CVoidP))
 
+(def float-types {32 'pixie.stdlib/CFloat
+                  64 'pixie.stdlib/CDouble})
+                  
 (defmethod edn-to-ctype :float
-  [{:keys [size]} _]
-  (cond
-   (= size 8) 'pixie.stdlib/CDouble
-   :else (assert false "unknown type")))
+  [{:keys [size] :as tp} _]
+  (let [tp-found (get float-types (* 8 size))]
+    (assert tp-found (str "No type found for " tp))
+    tp-found))
 
 (defmethod edn-to-ctype :void
   [_ _]
@@ -178,24 +181,35 @@ return 0;
   `(def ~(symbol name)
      ~(callback-type of-type false)))
 
+(def mkdtemp (ffi-fn libc "mkdtemp" [CCharP] CCharP))
+(def unlink (ffi-fn libc "unlink" [CCharP] CInt))
+(def rmdir (ffi-fn libc "rmdir" [CCharP] CInt))
+(def tempdir-template (str (or (getenv "TMPDIR") "/tmp")
+                           "/ffiXXXXXX"))
 
 (defn run-infer [config cmds]
-  (io/spit "/tmp/tmp.cpp" (str (start-string)
-                               (apply str (map emit-infer-code
-                                               cmds))
-                               (end-string)))
-  (println @load-paths)
-  (let [cmd-str (str "c++ "
-                     (apply str (interpose " " pixie.platform/c-flags))
-                     "  /tmp/tmp.cpp "
-                     (apply str (map (fn [x] ( str " -I " x " "))
-                                     @load-paths))
-                     (apply str " " (interpose " " (:cxx-flags *config*)))
-                     " -o /tmp/a.out && /tmp/a.out")
-        _ (println cmd-str)
-        result (read-string (io/run-command cmd-str))
-        gen (vec (map generate-code cmds result))]
-    `(do ~@gen)))
+  (let [tempdir (mkdtemp tempdir-template)
+        infile (str tempdir "/ffi.cpp")
+        outfile (str tempdir "/ffi.out")]
+    (io/spit infile (str (start-string)
+                         (apply str (map emit-infer-code
+                                         cmds))
+                         (end-string)))
+    (println @load-paths)
+    (let [cmd-str (str "c++ "
+                       (apply str (interpose " " pixie.platform/c-flags))
+                       " " infile " "
+                       (apply str (map (fn [x] ( str " -I " x " "))
+                                       @load-paths))
+                       (apply str " " (interpose " " (:cxx-flags *config*)))
+                       " -o " outfile " && " outfile)
+          _ (println cmd-str)
+          result (read-string (io/run-command cmd-str))
+          gen (vec (map generate-code cmds result))]
+      (unlink infile)
+      (unlink outfile)
+      (rmdir tempdir)
+      `(do ~@gen))))
 
 (defn full-lib-name [library-name]
   (if (= library-name "c")

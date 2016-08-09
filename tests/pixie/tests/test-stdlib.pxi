@@ -19,6 +19,46 @@
   (t/assert= (mapcat identity []) [])
   (t/assert= (mapcat first [[[1 2]] [[3] [:not :present]] [[4 5 6]]]) [1 2 3 4 5 6]))
 
+(t/deftest test-indexed
+  (t/assert= (map-indexed (fn [& xs] xs) []) [])
+  (t/assert= (map-indexed (fn [& xs] xs) [:a :b]) [[0 :a] [1 :b]])
+  (t/assert= (transduce (map-indexed (fn [& xs] xs)) conj [:a :b]) [[0 :a] [1 :b]])
+
+  (t/assert= (keep-indexed (constantly true) []) [])
+  (t/assert= (keep-indexed (constantly nil) []) [])
+  (t/assert= (keep-indexed (fn [i x] [i x]) [:a :b]) [[0 :a] [1 :b]])
+
+  (t/assert= (transduce (keep-indexed (constantly true)) conj [:a :b]) [true true])
+  (t/assert= (transduce (keep-indexed (constantly nil)) conj [:a :b]) [])
+  (t/assert= (transduce (keep-indexed (fn [i x] [i x])) conj [:a :b]) [[0 :a] [1 :b]])
+
+  (let [even-index? (fn [i x]
+                        (when (even? i)
+                          x))]
+    (t/assert= (transduce (keep-indexed even-index?) conj [:a :b :c :d])
+               [:a :c])
+    (t/assert= (transduce (map-indexed even-index?) conj [:a :b :c :d])
+               [:a nil :c nil])
+
+    (t/assert= (transduce (comp (keep-indexed even-index?)
+                                (take 3))
+                          conj
+                          [:a :b :c :d :e :f])
+               [:a :c :e])
+    (t/assert= (transduce (comp (map-indexed even-index?)
+                                (take 3))
+                          conj
+                          [:a :b :c :d])
+               [:a nil :c])))
+
+(t/deftest test-reductions
+  (t/assert= (reductions + nil)
+             [0])
+  (t/assert= (reductions + [1 2 3 4 5])
+             [1 3 6 10 15])
+  (t/assert= (reductions + 10 [1 2 3 4 5])
+             [10 11 13 16 20 25]))
+
 (t/deftest test-str
   (t/assert= (str nil) "nil")
   (t/assert= (str true) "true")
@@ -304,6 +344,16 @@
   (t/assert= (fn? "foo") false)
   (t/assert= (fn? (let [x 8] (fn [y] (+ x y)))) true))
 
+(t/deftest test-coll?
+  (t/assert= (coll? '()) true)
+  (t/assert= (coll? []) true)
+  (t/assert= (coll? {:foo "bar"}) true)
+  (t/assert= (coll? #{:foo :bar}) true)
+  (t/assert= (coll? #(%)) false)
+  (t/assert= (coll? :foo) false)
+  (t/assert= (coll? "foo") false)
+  (t/assert= (coll? 1) false))
+
 (t/deftest test-macro?
   (t/assert= (macro? and) true)
   (t/assert= (macro? or) true)
@@ -330,7 +380,9 @@
 
 (t/deftest test-rand-int
   (let [vs (repeatedly 10 #(rand-int 4))]
-    (t/assert (every? #(and (>= % 0) (< % 4)) vs))))
+    (t/assert (every? #(and (>= % 0) (< % 4)) vs)))
+  (let [vs (repeatedly 10 #(rand-int 0))]
+    (t/assert (every? zero? vs))))
 
 (t/deftest test-some
   (t/assert= (some even? [2 4 6 8]) true)
@@ -509,7 +561,21 @@
   (t/assert= (transduce (take 0) conj [1 2 3 4]) [])
   (t/assert= (transduce (take 1) conj [1 2 3 4]) [1])
   (t/assert= (transduce (take 2) conj [1 2 3 4]) [1 2])
-  (t/assert= (transduce (take 3) conj [1 2 3 4]) [1 2 3]))
+  (t/assert= (transduce (take 3) conj [1 2 3 4]) [1 2 3])
+  (t/assert= (transduce (take 10) conj [1 2 3 4]) [1 2 3 4])
+  (t/assert= (transduce (comp (take 2) (take 1)) conj [1 2 3 4]) [1])
+  (t/assert= (transduce (comp (take 1) (take 2)) conj [1 2 3 4]) [1])
+
+  (let [call-count (atom 0)
+        inc-call-count! (fn [x]
+                          (swap! call-count inc)
+                          x)]
+    (t/assert= (transduce (comp (map inc-call-count!) (take 2)) conj (range 10))
+               [0 1])
+    (t/assert= @call-count 2)
+    (t/assert= (transduce (comp (take 2) (map inc-call-count!)) conj (range 10))
+               [0 1])
+    (t/assert= @call-count 4)))
 
 (t/deftest test-drop
   (t/assert= (drop 0 [1 2 3 4]) [1 2 3 4])
@@ -519,21 +585,55 @@
   (t/assert= (transduce (drop 0) conj [1 2 3 4]) [1 2 3 4])
   (t/assert= (transduce (drop 1) conj [1 2 3 4]) [2 3 4])
   (t/assert= (transduce (drop 2) conj [1 2 3 4]) [3 4])
-  (t/assert= (transduce (drop 3) conj [1 2 3 4]) [4]))
+  (t/assert= (transduce (drop 3) conj [1 2 3 4]) [4])
+  (t/assert= (transduce (drop 10) conj [1 2 3 4]) [])
+  (t/assert= (transduce (comp (drop 1) (take 2)) conj [1 2 3 4]) [2 3])
+  (t/assert= (transduce (comp (take 2) (drop 1)) conj [1 2 3 4]) [2]))
 
 (t/deftest test-take-while
   (t/assert= (take-while pos? [1 2 3 -1]) [1 2 3])
   (t/assert= (take-while pos? [-1 2]) ())
   (t/assert= (transduce (take-while even?) conj [2 4 6 7 8]) [2 4 6])
   (t/assert= (transduce (take-while even?) conj [0 2] [1 4 6]) [0 2])
-  (t/assert= (transduce (take-while even?) conj [1 3] [2 4 6 7 8]) [1 3 2 4 6]))
+  (t/assert= (transduce (take-while even?) conj [1 3] [2 4 6 7 8]) [1 3 2 4 6])
+  (t/assert= (transduce (comp (take-while even?) (take 2)) conj [1 3] [2 4 6 7 8]) [1 3 2 4]))
 
 (t/deftest test-drop-while
   (t/assert= (drop-while pos? [1 2 3 -1]) [-1])
   (t/assert= (drop-while pos? [-1 2]) [-1 2])
   (t/assert= (transduce (drop-while even?) conj [2 4 6 7 8]) [7 8])
   (t/assert= (transduce (drop-while even?) conj [0 2] [1 4 6]) [0 2 1 4 6])
-  (t/assert= (transduce (drop-while even?) conj [0 2] [2 4 6 7 8]) [0 2 7 8]))
+  (t/assert= (transduce (drop-while even?) conj [0 2] [2 4 6 7 8]) [0 2 7 8])
+  (t/assert= (transduce (comp (drop-while even?) (take 2)) conj [0 2] [2 4 6 7 8]) [0 2 7 8]))
+
+(t/deftest test-cycle
+  (t/assert= (cycle ()) ())
+  (t/assert= (cycle nil) ())
+  (t/assert= (take 5 (cycle '(1 2))) '(1 2 1 2 1))
+  (t/assert= (take 3 (cycle [nil])) '(nil nil nil)))
+
+(t/deftest test-eduction
+  ;; one xform
+  (t/assert= [1 2 3 4 5]
+             (eduction (map inc) (range 5)))
+  ;; multiple xforms
+  (t/assert= ["2" "4"]
+             (eduction (map inc) (filter even?) (map str) (range 5)))
+  ;; materialize at the end
+  (t/assert= [1 1 2 1 2 3 1 2 3 4]
+             (vec (->> (range 5)
+                       (eduction (mapcat range) (map inc)))))
+  (t/assert= {1 4, 2 3, 3 2, 4 1}
+             (->> (range 5)
+                  (eduction (mapcat range) (map inc))
+                  frequencies))
+  (t/assert= ["tac" "god" "hsif" "drib" "kravdraa"]
+             (->> ["cat" "dog" "fish" "bird" "aardvark"]
+                  (eduction (map pixie.string/reverse))
+                  (seq)))
+  ;; expanding transducer with nils
+  (t/assert= '(1 2 3 nil 4 5 6 nil)
+             (seq (eduction cat [[1 2 3 nil] [4 5 6 nil]]))))
 
 (t/deftest test-trace
   (try
@@ -652,11 +752,12 @@
   (t/assert= 5 ((comp inc inc inc inc) 1))
   (t/assert= :xyz ((comp) :xyz)))
 
-(t/deftest test-swap-reset
+(t/deftest test-atom
   (let [a (atom 0)]
     (t/assert= 1 (swap! a inc))
     (t/assert= 2 (swap! a inc))
-    (t/assert= 3 (reset! a 3))))
+    (t/assert= 3 (reset! a 3))
+    (t/assert= :bar (-> a (with-meta {:foo :bar}) meta :foo))))
 
 (t/deftest pre-post-conds
   (let [f (fn ([a] {:pre [(even? a)] :post [(= % 6)]} (/ a 2))
@@ -691,3 +792,36 @@
     (t/assert= m (map-entry :a 1))
     (t/assert= m [:a 1])
     (t/assert= m '(:a 1))))
+
+(t/deftest test-vary-meta
+  (t/assert= 42 (-> {} (vary-meta assoc :foo 42) meta :foo)))
+
+(t/deftest test-memoize
+  (let [f (memoize rand)]
+    (t/assert= (f) (f))))
+
+(t/deftest test-iterate
+  (t/assert= (take 5 (iterate inc 5)) '(5 6 7 8 9))
+  (t/assert= (reduce (fn [a v] (reduced "foo")) 0 (iterate inc 1)) "foo")
+  (t/assert= (reduce (fn [a v] (if (< a 10) (+ a v) (reduced a))) 0 (iterate (partial + 2) 1)) 16))
+
+(t/deftest test-sequence-empty-sequences
+  (t/assert= '() (take 1 (sequence (map inc) '())))
+  (t/assert= '() (take 1 (sequence (map inc) [])))
+  (t/assert= '() (take 1 (sequence (map inc) #{})))
+  (t/assert= '() (take 1 (sequence (map inc) {}))))
+
+(t/deftest test-sequence-non-empty-sequences
+  (t/assert= '(1 3) (take 2 (sequence (comp
+                                       (filter even?)
+                                       (map inc)) (range 3))))
+  (t/assert= '(1) (take 1 (sequence (distinct) (repeat 4 1)))))
+
+(t/deftest test-sequence-early-terminating-sequences
+  (t/assert= '() (take 5 (sequence (filter (fn [x] false)) (repeat 8 8))))
+  (t/assert= '(1 2) (take 3 (sequence (map identity) [1 2])))
+  (t/assert= #{[:a 1] [:b 2]} (into #{} (take 3 (sequence (filter (fn [[k v]]
+                                                                    (keyword? k)) {:a 1
+                                                                                   :b 2
+                                                                                   "c" 3
+                                                                                   "d" 4}))))))
